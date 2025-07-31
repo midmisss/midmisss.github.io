@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>💸 용돈 소비 계획 도우미 (Priority & Utility)</title>
+  <style>
+    body { font-family: '맑은 고딕', sans-serif; margin: 40px; background: #f9f9f9; }
+    h1 { color: #333; }
+    input, select, button { padding: 8px; margin: 5px; }
+    .item-input { margin-bottom: 10px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .output { margin-top: 30px; padding: 20px; background: #fff; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .warning { color: #d9534f; }
+  </style>
+</head>
+<body>
+
+  <h1>💸 용돈 소비 계획 도우미</h1>
+
+  <label>이번 달 용돈 (원):</label>
+  <input type="number" id="totalMoney" /><br>
+
+  <label>비상금 비율 (%):</label>
+  <input type="number" id="emergencyRate" /><br>
+
+  <h3>사용 항목 입력</h3>
+  <div id="itemsContainer"></div>
+  <button onclick="addItem()">+ 항목 추가</button>
+  <button onclick="calculate()">📊 소비 계획 계산</button>
+
+  <div class="output" id="result"></div>
+
+  <script>
+    function addItem() {
+      const container = document.getElementById('itemsContainer');
+      const div = document.createElement('div');
+      div.className = 'item-input';
+      div.innerHTML = `
+        <label>항목 이름:</label>
+        <input type="text" class="item-name" placeholder="예: 커피" />
+        <label>예산 (월):</label>
+        <input type="number" class="item-cost" placeholder="0" />
+        <label>소비 주기:</label>
+        <select class="item-cycle">
+          <option value="daily">매일</option>
+          <option value="weekly">주1회</option>
+        </select>
+        <label>우선순위:</label>
+        <select class="item-priority">
+          <option value="1">1 - 낮음</option>
+          <option value="2" selected>2 - 보통</option>
+          <option value="3">3 - 매우 중요</option>
+        </select>
+      `;
+      container.appendChild(div);
+    }
+
+    function calculate() {
+      // 1) 기본 입력값 검증
+      const T = parseInt(document.getElementById('totalMoney').value);
+      const R = parseFloat(document.getElementById('emergencyRate').value);
+      if (isNaN(T) || isNaN(R)) {
+        alert("용돈과 비상금 비율을 올바르게 입력해주세요.");
+        return;
+      }
+      const emergency = Math.floor(T * (R / 100));
+      const avail = T - emergency;
+
+      // 2) 항목 수집
+      const names = document.getElementsByClassName('item-name');
+      const costs = document.getElementsByClassName('item-cost');
+      const cycles = document.getElementsByClassName('item-cycle');
+      const pris   = document.getElementsByClassName('item-priority');
+
+      let items = [], totalPlanned = 0, warnings = [];
+      for (let i = 0; i < names.length; i++) {
+        const name = names[i].value.trim();
+        const cost = parseInt(costs[i].value);
+        const cycle= cycles[i].value;
+        const pri  = parseInt(pris[i].value);
+        if (!name || isNaN(cost)) continue;
+        items.push({ name, cost, cycle, pri });
+        totalPlanned += cost;
+        // 한계효용 경고: 한 항목이 가용 예산의 50% 초과
+        if (cost > avail * 0.5) {
+          warnings.push(`⚠️ <strong>${name}</strong> 항목이 전체 소비 예산의 ${(cost/avail*100).toFixed(1)}%를 차지합니다. 균형을 고려하세요.`);
+        }
+      }
+      if (items.length === 0) {
+        alert("최소 하나 이상의 소비 항목을 입력해주세요.");
+        return;
+      }
+
+      // 3) 결과 생성
+      let html = `<h2>📊 소비 계획 결과</h2>`;
+      html += `<p>총 용돈: ${T.toLocaleString()}원 | 비상금: ${emergency.toLocaleString()}원 | 가용 예산: ${avail.toLocaleString()}원</p>`;
+
+      // 4) 예산 초과 시 우선순위 기반 재분배
+      if (totalPlanned > avail) {
+        html += `<p class="warning">⚠️ 예산 초과! 우선순위에 따라 재분배합니다.</p>`;
+        const sumPri = items.reduce((s, it) => s + it.pri, 0);
+        let redistributed = items.map(it => {
+          return {
+            ...it,
+            cost: Math.floor(avail * (it.pri / sumPri))
+          };
+        });
+        // 남은 소액은 가장 높은 우선순위 항목에 추가
+        const used = redistributed.reduce((s, it) => s + it.cost, 0);
+        const diff = avail - used;
+        if (diff > 0) {
+          const top = redistributed.reduce((a,b) => b.pri > a.pri ? b : a);
+          top.cost += diff;
+        }
+        items = redistributed;
+      }
+
+      // 5) 경고문구 삽입
+      if (warnings.length) {
+        html += `<div class="warning"><p>🔍 경고 및 조언:</p><ul>`;
+        warnings.forEach(w => html += `<li>${w}</li>`);
+        html += `</ul></div>`;
+      }
+
+      // 6) 항목별 상세 출력
+      html += `<ul>`;
+      items.forEach(it => {
+        let detail = it.cycle === 'daily'
+          ? `→ 하루당 약 ${Math.floor(it.cost/30).toLocaleString()}원`
+          : `→ 1회당 약 ${Math.floor(it.cost/4).toLocaleString()}원`;
+        html += `<li>📌 ${it.name}: ${it.cost.toLocaleString()}원/월 (${it.cycle==='daily'?'매일':'주1회'}) ${detail} [우선순위:${it.pri}]</li>`;
+      });
+      html += `</ul>`;
+
+      // 7) 남은 예산
+      const usedFinal = items.reduce((s, it) => s + it.cost, 0);
+      html += `<p>🧮 남은 예산: ${(avail - usedFinal).toLocaleString()}원</p>`;
+
+      document.getElementById('result').innerHTML = html;
+    }
+  </script>
+
+</body>
+</html>
